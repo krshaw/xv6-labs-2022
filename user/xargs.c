@@ -54,7 +54,6 @@ void apply(char *command[], char* additional_args, int argc) {
         printf("exec error\n");
     } else {
         wait(0);
-        exit(0);
     }
 }
 
@@ -75,6 +74,7 @@ main(int argc, char *argv[])
   char **command = &argv[1];
   char *p = buf;
 
+  // all the lines are read into buf at this point
   while (*p) {
     if (*p == '\n') {
         additional_args[j] = 0;
@@ -83,7 +83,6 @@ main(int argc, char *argv[])
         p++;
         continue;
     }
-    //printf("%s\n", additional_args);
     additional_args[j++] = *p++;
   }
   exit(0);
