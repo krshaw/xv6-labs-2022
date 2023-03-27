@@ -12,8 +12,8 @@ void
 split(char *strs[], char *str, char delim, int* c) {
     int i = 0;
     int j = 0;
+    // find better way of doing this?
     strs[i] = malloc(512 * sizeof(char));
-    //char single_str[512];
     char *p = str;
     while (*p) {
         if (*p == delim) {
@@ -35,18 +35,12 @@ void apply(char *command[], char* additional_args, int argc) {
     char *more_args[MAXARG];
     split(more_args, additional_args, ' ', &more_argc);
 
-    //for (int i = 0; i < more_argc; i++) printf("%s\n", more_args[i]);
     if (argc - 1 + more_argc > MAXARG) {
         fprintf(2, "too many args!\n");
     }
-    //for (int i = 0; i < argc; i++) printf("%s ", command[i]);
-    //for (int i = 0; i < more_argc; i++) printf("%s ", more_args[i]);
-    //printf("\n");
     append(args, command, argc, more_args, more_argc);
     args[argc-1+more_argc] = 0;
-    //printf("running command:\n");
-    //for (int i = 0; i < argc + more_argc - 1; i++) printf("%s ", args[i]);
-    //printf("\n");
+
     if (fork() == 0) {
         // child
         //for (int i = 0; i < argc - 1 + more_argc; i++) printf("%s\n", args[i]);
@@ -71,7 +65,7 @@ main(int argc, char *argv[])
   while(read(0, &buf[i++], 1) > 0) {}
   char additional_args[512];
   int j = 0;
-  char **command = &argv[1];
+  char **command = argv + 1;
   char *p = buf;
 
   // all the lines are read into buf at this point
