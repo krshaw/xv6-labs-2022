@@ -1,0 +1,9 @@
+1. usertrap
+2. 7, it represents the number of the syscall that will be called
+3. processor was previously in user mode
+4. the CPU was previously in user mode
+5. 80001ff8: 00002683 lw a3, 0(zero). the register a3 corresponds to num
+6. the kernel crashes because there is no entry in the kernel page table for virtual address zero
+   the value of scause if 0x0d, or 13, which is a load page fault according to the riscv instruction set manual
+7. the name of the binary is initcode. its pid is 1
+
