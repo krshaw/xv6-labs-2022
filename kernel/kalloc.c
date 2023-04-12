@@ -91,7 +91,7 @@ kfreemem(void)
     // each entry in the freelist is a 4096 byte page
     while (r) {
         r = r->next;
-        num_bytes += 4096;
+        num_bytes += PGSIZE;
     }
     return num_bytes;
 }
