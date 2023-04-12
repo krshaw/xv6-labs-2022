@@ -80,3 +80,18 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+uint64
+kfreemem(void)
+{
+    struct run *r;
+    uint64 num_bytes = 0;
+    // TODO: need to acquire lock here?
+    r = kmem.freelist;
+    // each entry in the freelist is a 4096 byte page
+    while (r) {
+        r = r->next;
+        num_bytes += 4096;
+    }
+    return num_bytes;
+}
