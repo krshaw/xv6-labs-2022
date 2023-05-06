@@ -286,6 +286,42 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+void
+print_pte(pte_t pte, int depth, int idx)
+{
+    for (int i = 0; i < depth; i++) {
+        printf(" ..");
+    }
+    printf("%d: pte %p pa %p\n", idx, pte, PTE2PA(pte));
+}
+
+void 
+printpgtbl(pagetable_t pagetable, int depth)
+{
+    for(int i = 0; i < 512; i++){
+        pte_t pte = pagetable[i];
+        // the pte is a pointer to another page table if its valid and not R, W, or X
+        if ((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+            // print the pte and recurse
+            print_pte(pte, depth, i);
+            uint64 child = PTE2PA(pte);
+            printpgtbl((pagetable_t)child, depth + 1);
+        } else if (pte & PTE_V){
+            // just print the pte
+            print_pte(pte, depth, i);
+        }
+    }
+}
+
+void
+vmprint(pagetable_t pagetable)
+{
+    // pagetable is a virtual address of a pagetable
+    // there is a direct mapping from virtual to physical for page table entries
+    printf("page table %p\n", pagetable);
+    printpgtbl(pagetable, 1);
+}
+
 // Free user memory pages,
 // then free page-table pages.
 void
