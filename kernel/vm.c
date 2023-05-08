@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -472,4 +474,30 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+void            
+pgaccess(uint64 va, int len, uint64 mask_ptr)
+{
+    unsigned int abits;
+    struct proc *p = myproc();
+    pte_t *pte;
+    // cap at 64 because the abits mask has 64 bits
+    for (int i = 0; i < len && i < 64; ++i) {
+        if((pte = walk(p->pagetable, va, 0)) == 0)
+            panic("pgaccess: walk");
+        if((*pte & PTE_V) == 0)
+            panic("pgaccess: not mapped");
+        // can use i to set the access bit
+        if (*pte & PTE_A) 
+            abits |= 1L << i;
+        // we want to determine if the page has been accessed since the last time pgaccess has been called, so clear the A bit
+        // this allows the OS to gather statistics about frequency of page access
+        // i.e. its not very useful for memory management algorithms to know that a page has been accessed, but that page was accessed several hours ago,
+        // while lots of other pages have been accessed after it. its a infrequently used page, and we want to know that information
+        *pte &= ~PTE_A;
+        va += PGSIZE;
+    }
+    // now just copyout the abits to mask_ptr
+    copyout(p->pagetable, mask_ptr, (char*)&abits, sizeof abits);
 }
