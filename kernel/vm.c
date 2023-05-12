@@ -424,6 +424,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
         *dst = *p;
       }
       --n;
+      // what is --max doing??
       --max;
       p++;
       dst++;

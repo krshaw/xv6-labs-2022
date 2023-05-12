@@ -33,9 +33,11 @@ uservec:
         # each process has a separate p->trapframe memory area,
         # but it's mapped to the same virtual address
         # (TRAPFRAME) in every process's user page table.
+		# load the address of TRAPFRAME into a0
         li a0, TRAPFRAME
         
         # save the user registers in TRAPFRAME
+		# other stuff is saved before offset 40
         sd ra, 40(a0)
         sd sp, 48(a0)
         sd gp, 56(a0)

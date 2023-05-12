@@ -43,11 +43,15 @@ usertrap(void)
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
+  // the separate code path for traps from kernel space
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
   
   // save user program counter.
+  // we can get it from sepc because risc-v saves the user pc to sepc before starting executing uservec
+  // need to save it here because calling yield will switch to another proc'c kernel thread, and that proc might return to user space,
+  // in the process of which it will modify sepc. 
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){

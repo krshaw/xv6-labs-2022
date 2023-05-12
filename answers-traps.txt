@@ -1,0 +1,2 @@
+1. the registers a0, a1, ... hold the arguments to functions. a2 holds 13 in main's call to printf
+2. 
