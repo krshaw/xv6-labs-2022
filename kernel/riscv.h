@@ -196,6 +196,14 @@ w_pmpaddr0(uint64 x)
   asm volatile("csrw pmpaddr0, %0" : : "r" (x));
 }
 
+static inline uint64
+r_fp()
+{
+    uint64 x;
+    asm volatile("mv %0, s0" : "=r" (x) );
+    return x;
+}
+
 // use riscv's sv39 page table scheme.
 #define SATP_SV39 (8L << 60)
 

@@ -1,2 +1,6 @@
 1. the registers a0, a1, ... hold the arguments to functions. a2 holds 13 in main's call to printf
-2. 
+2. there is no call to f, the compiler computed the value of f(8) + 1 and stored 12 directly in a1
+3. address of printf must be the value of ra + 1536. val of ra is 0x30, from the previous instruction. 0x30 + 1536 = 48 + 1536 = 1584 = 0x630
+4. after the jalr call to printf, register ra contains 0x30 (48) because the auipc instruction loaded ra with value pc + 0, which was 0x30 + 0
+   then jalr was called with ra as rs1, and jalr doesn't modify the source register, so the value of ra after the jalr call was still 0x30
+

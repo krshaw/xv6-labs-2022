@@ -122,6 +122,7 @@ panic(char *s)
   printf("panic: ");
   printf(s);
   printf("\n");
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
@@ -133,3 +134,58 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void
+backtrace()
+{
+    
+    // Stack
+    //                 .
+    //    +->          .
+    //    |   +-----------------+   |
+    //    |   | return address  |   |
+    //    |   |   previous fp ------+
+    //    |   | saved registers |
+    //    |   | local variables |
+    //    |   |       ...       | <-+
+    //    |   +-----------------+   |
+    //    |   | return address  |   |
+    //    +------ previous fp   |   |
+    //        | saved registers |   |
+    //        | local variables |   |
+    //    +-> |       ...       |   |
+    //    |   +-----------------+   |
+    //    |   | return address  |   |
+    //    |   |   previous fp ------+
+    //    |   | saved registers |
+    //    |   | local variables |
+    //    |   |       ...       | <-+
+    //    |   +-----------------+   |
+    //    |   | return address  |   |
+    //    +------ previous fp   |   |
+    //        | saved registers |   |
+    //        | local variables |   |
+    //$fp --> |       ...       |   |
+    //        +-----------------+   |
+    //        | return address  |   |
+    //        |   previous fp ------+
+    //        | saved registers |
+    //$sp --> | local variables |
+    //        +-----------------+
+    // kick it off by getting the current frame pointer
+    uint64 fp, pg, ra;
+    fp = r_fp();
+    // get the current page so we know when we've gone off the page, which is when we're off this stack
+    pg = PGROUNDDOWN(fp);
+    while (PGROUNDDOWN(fp) == pg) {
+        // print return address of this stack frame
+        // need to be printing the value stored inside the ra
+        // return address is at offset -8 from the frame pointer
+        ra = *(uint64*)(fp - 8);
+        printf("%p\n", ra);
+        // now set fp to the value stored at offset -16 from current framepointer
+        // first subtract fp to get the address of the previous fp, cast to a pointer, and dereference to get the value of previous fp
+        fp = *(uint64*)(fp - 16);
+    }
+}
+
