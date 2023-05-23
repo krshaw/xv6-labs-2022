@@ -150,4 +150,5 @@ userret:
         
         # return to user mode and user pc.
         # usertrapret() set up sstatus and sepc.
+		# sepc is what determines the instruction address as which user code resumes execution
         sret
