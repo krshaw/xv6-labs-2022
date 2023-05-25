@@ -96,18 +96,12 @@ sys_uptime(void)
 uint64
 sys_sigalarm(void)
 {
-    struct proc* p = myproc();
-    printf("%p\n", p->trapframe->a1);
-    printf("%p\n", p->trapframe->a0);
-    printf("%p\n", p->trapframe->a2);
-    // get the interval and handler
+    struct proc *p = myproc();
     int alarm_interval;
     uint64 handler_addr;
     argint(0, &alarm_interval);
     argaddr(1, &handler_addr);
     p->alarm_interval = alarm_interval;
-    // now with this, in usertrap(), you can jump to handler when the alarm expires
-    printf("%p\n", handler_addr);
     p->handler = (void (*)(void))handler_addr;
     p->remaining_ticks = alarm_interval;
     return 0;
@@ -116,5 +110,9 @@ sys_sigalarm(void)
 uint64
 sys_sigreturn(void)
 {
+    struct proc *p = myproc();
+    // only "re-arm" the alarm after the handler returns, because if the handler hasn't returned, the kernel shouldn't call it again
+    p->remaining_ticks = p->alarm_interval;
+    restore_old_trapframe();
     return 0;
 }
