@@ -1,0 +1,12 @@
+1. modify uvmcopy() to MAP the parent's physical pages into the child instead of allocating new copies of the parent pages
+2. modify usertrap() to recognize page faults and if they are a result of a COW fork, and handle them (copy when needed)
+   * use the RSW bits in the RISC-V PTE to check if its a COW mapping
+3. keep reference counts of each physical page, and only free it when the reference count is 0
+   * kfree() should only put a page back on the freelist if its ref count is 0
+   * use an array to do this?
+   * divide PPN by 4096 to the index of the page, out of all pages (i.e. highest PPN / 4096 = num physical pages)
+4. copyout() needs to handle COW pages the same way the page fault handler does
+
+hints
+~ might be usedful to use the RSW bits to keep track if a PTE is a COW mapping. or just count the ref?
+~ proc should be killed if a COW page fault occurs and there is no free memory

@@ -93,6 +93,7 @@ consoleread(int user_dst, uint64 dst, int n)
         release(&cons.lock);
         return -1;
       }
+      // will be woken up by consoleintr() when a newline arrives
       sleep(&cons.r, &cons.lock);
     }
 
@@ -131,7 +132,7 @@ consoleread(int user_dst, uint64 dst, int n)
 // uartintr() calls this for input character.
 // do erase/kill processing, append to cons.buf,
 // wake up consoleread() if a whole line has arrived.
-//
+// c comes from uartintr() when it reads the char from the UART memory
 void
 consoleintr(int c)
 {

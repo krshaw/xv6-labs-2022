@@ -289,6 +289,7 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
+  // TODO: modify uvmcopy to MAP the parent's physical pages into the child, instead of allocating new pages
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);

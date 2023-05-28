@@ -15,6 +15,8 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern int ref_counts[];
+
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -22,8 +24,10 @@ kvmmake(void)
   pagetable_t kpgtbl;
 
   kpgtbl = (pagetable_t) kalloc();
+  printf("1\n");
+  printf("kpgtbl: %p\n", kpgtbl);
   memset(kpgtbl, 0, PGSIZE);
-
+  printf("2\n");
   // uart registers
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
@@ -308,28 +312,74 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
+    // walk gets the PTE of the final page table of the va
+    // get the PTE of each page of the parent's memory
+    // the va of each page can be calculated by just starting at 0 and adding 4096
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    // pa refers to the physical page at this point (not the offset in into the page though)
+    // shift 10 bits right to get the physical page number, then shift 12 to the left to make room for adding 12 bit offset
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    // this just maps one pte child to the corresponding parent page
+    // clear the PTE_W bit and use RSW to indicate a COW mapping only if the page was already writeable
+    if (*pte & PTE_W) {
+        flags &= ~PTE_W;
+        flags |= PTE_RSW0;
+        *pte &= ~PTE_W;
+        *pte |= PTE_RSW0;
+    }
+    if(mappages(new, i, PGSIZE, pa,  flags) != 0){
       goto err;
     }
+    ref_counts[PHYSTOP / pa] += 1;
+    // TODO: increment reference count to pa
   }
   return 0;
 
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
+}
+
+void remap(pte_t *pte, uint64 pa, int flags)
+{
+    *pte = PA2PTE(pa) | flags | PTE_V;
+}
+// takes the pte of the final page table of the va, the va itself, and the pagetable
+void
+handle_cow_fault(pagetable_t pagetable, pte_t *pte, uint64 va)
+{
+
+    // handle cow fault
+    // allocate a page of physical memory
+    // copy the original page into the new page
+    // modify the relevant PTE in the faulting process with the PTE_W bit set
+    // should the PTE of the parent (or child) process also be marked writable?
+    char *mem;
+    uint64 pa;
+    uint flags;
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if ((mem = kalloc()) == 0) {
+        panic("handle_cow_fault: couldn't allocate new page");
+    }
+    memmove(mem, (char*)pa, PGSIZE);
+    // mappages takes the pagetable, the va, size to copy (in this case just the size of one page), physical address, and flags
+    // mark it as not valid so we can remap it
+    flags &= ~PTE_RSW0;
+    flags |= PTE_W;
+    // is there some other function for modifying this pte to refer to the new page + marking it writeable?
+    //if (mappages(pagetable, va, PGSIZE, pa, flags) != 0) {
+    //    panic("handle_cow_fault: couldn't remap new page");
+    //}
+    remap(pte, (uint64)mem, flags);
+    ref_counts[PHYSTOP / pa] -= 1;
+    return;
 }
 
 // mark a PTE invalid for user access.
@@ -352,16 +402,28 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
+  pte_t* pte;
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
-      return -1;
+        return -1;
     n = PGSIZE - (dstva - va0);
     if(n > len)
-      n = len;
-    memmove((void *)(pa0 + (dstva - va0)), src, n);
+        n = len;
+    // va is the destination, which might be mapped to a COW page
+    // the kernel is going to write to that page, but won't trigger a page fault because copyout() runs in kernel mode
+    if ((pte = walk(pagetable, va0, 0)) == 0)
+        panic("copyout: pte should exist");
+    if((*pte & PTE_V) == 0)
+        panic("copyout: page not present");
+    // if its a COW pte, then call handle_cow_fault
+    if (*pte & PTE_RSW0) {
+        handle_cow_fault(pagetable, pte, va0);
+    } else {
+        memmove((void *)(pa0 + (dstva - va0)), src, n);
+    }
 
     len -= n;
     src += n;

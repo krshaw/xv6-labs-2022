@@ -65,6 +65,37 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 15) {
+    // check if scause is 15 for a Store page fault
+    // on a store page fault, how do we get the faulty va?
+    // if stval is written with a nonzero value when an instruction access-fault or page-fault exception occurs 
+    // on a system with variable-length instructions, then stval will contain the virtual address of the portion
+    // of the instruction that caused the fault, while sepc will point to the beginning of the instruction
+    // NOTE: stval will contain the virutal addres of the portion of the instruction that caused the fault, 
+    // not the address that caused the fault itself. so a dereference is required
+    
+    // is this a COW fault?
+    // print out the value of stval and sepc
+    // if they are close, then i am correctly dereferencing stval
+    // if they are not close, then stval directly holds the faulting address,
+    // so don't dereference it
+    uint64 va = r_stval();
+    //printf("###############\n");
+    //printf("stval: %p\n", r_stval());
+    //printf("sepc:  %p\n", r_sepc());
+    pte_t* pte;
+    if ((pte = walk(p->pagetable, va, 0)) == 0){
+        panic("usertrap: pte should exist");
+    }
+    if((*pte & PTE_V) == 0)
+      panic("usertrap: page not present");
+    if (*pte & PTE_RSW0) {
+        handle_cow_fault(p->pagetable, pte, va);
+    } else {
+        printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+        printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+        setkilled(p);
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
