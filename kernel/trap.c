@@ -80,14 +80,22 @@ usertrap(void)
     // if they are not close, then stval directly holds the faulting address,
     // so don't dereference it
     uint64 va = r_stval();
-    pte_t* pte;
-    if ((pte = walk(p->pagetable, va, 0)) == 0){
-        panic("usertrap: pte should exist");
-    }
-    if((*pte & PTE_V) == 0)
-      panic("usertrap: page not present");
-    if (*pte & PTE_RSW0) {
-        handle_cow_fault(p->pagetable, pte);
+
+    if(va < MAXVA) {
+        pte_t* pte;
+        // why are you walk()ing BEFORE checking if its a COW fault, numbnuts??
+        if ((pte = walk(p->pagetable, va, 0)) == 0){
+            panic("usertrap: pte should exist");
+        }
+        if((*pte & PTE_V) == 0)
+          panic("usertrap: page not present");
+        if (*pte & PTE_RSW0) {
+            handle_cow_fault(p->pagetable, pte);
+        } else {
+            printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+            printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+            setkilled(p);
+        }
     } else {
         printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
         printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
