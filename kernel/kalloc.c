@@ -53,9 +53,14 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  ref_counts[PHYSTOP / (uint64)pa] -= 1;
-  if (ref_counts[PHYSTOP / (uint64)pa] != 0)
-      return;
+  // only do this check if there are references to this page
+  // if there are no refs at all to the page, then that means it is being put on the free list for the first time by freerange
+  int i = (uint64)pa / PGSIZE;
+  if (ref_counts[i] != 0) {
+    ref_counts[i] -= 1;
+    if (ref_counts[i] != 0)
+        return;
+  }
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -85,6 +90,6 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   // r is the physical address of the page just allocates
-  ref_counts[PHYSTOP / (uint64)r] = 1;
+  ref_counts[(uint64)r / PGSIZE] = 1;
   return (void*)r;
 }

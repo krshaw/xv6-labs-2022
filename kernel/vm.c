@@ -24,10 +24,8 @@ kvmmake(void)
   pagetable_t kpgtbl;
 
   kpgtbl = (pagetable_t) kalloc();
-  printf("1\n");
-  printf("kpgtbl: %p\n", kpgtbl);
+  // for some reason kalloc is returning 0...
   memset(kpgtbl, 0, PGSIZE);
-  printf("2\n");
   // uart registers
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
@@ -336,7 +334,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, pa,  flags) != 0){
       goto err;
     }
-    ref_counts[PHYSTOP / pa] += 1;
+    ref_counts[pa / PGSIZE] += 1;
     // TODO: increment reference count to pa
   }
   return 0;
@@ -352,7 +350,7 @@ void remap(pte_t *pte, uint64 pa, int flags)
 }
 // takes the pte of the final page table of the va, the va itself, and the pagetable
 void
-handle_cow_fault(pagetable_t pagetable, pte_t *pte, uint64 va)
+handle_cow_fault(pagetable_t pagetable, pte_t *pte)
 {
 
     // handle cow fault
@@ -373,13 +371,8 @@ handle_cow_fault(pagetable_t pagetable, pte_t *pte, uint64 va)
     // mark it as not valid so we can remap it
     flags &= ~PTE_RSW0;
     flags |= PTE_W;
-    // is there some other function for modifying this pte to refer to the new page + marking it writeable?
-    //if (mappages(pagetable, va, PGSIZE, pa, flags) != 0) {
-    //    panic("handle_cow_fault: couldn't remap new page");
-    //}
     remap(pte, (uint64)mem, flags);
-    ref_counts[PHYSTOP / pa] -= 1;
-    return;
+    kfree((void*)pa);
 }
 
 // mark a PTE invalid for user access.
@@ -420,10 +413,10 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         panic("copyout: page not present");
     // if its a COW pte, then call handle_cow_fault
     if (*pte & PTE_RSW0) {
-        handle_cow_fault(pagetable, pte, va0);
-    } else {
-        memmove((void *)(pa0 + (dstva - va0)), src, n);
+        handle_cow_fault(pagetable, pte);
+        pa0 = walkaddr(pagetable, va0);
     }
+    memmove((void *)(pa0 + (dstva - va0)), src, n);
 
     len -= n;
     src += n;
