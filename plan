@@ -1,0 +1,15 @@
+thread_switch only needs to save/restore callee-save registers. Why?
+What are "calle-save registers"? 
+registers that must be saved by the callee according to the calling convention
+so when any procedure is called on risc-v, the caller can expected the saved registers to be preserved accross calls
+if it is expected to be preserved across calls, it is a callee-saved registers
+
+so why do only callee-saved registers need to be saved/restored?
+its because those are the only registers that are guarenteed by the calling convention to be preserved across calls
+
+2 problems for stack:
+are we allowed to just change the stack pointer while in user mode?
+how do we "initialize" a new stack when a thread first starts?
+the kernel just sets it to a page after p->kstack
+we could do the same, because each stack is a page
+or we could just straight up allocate a page using sbrk(), and use that page as the stack
