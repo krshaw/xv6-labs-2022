@@ -13,7 +13,7 @@
 
 struct thread {
   uint64 ra;
-  uint64 pc;
+  uint64 sp;
 
   // callee-saved
   uint64 s0;
@@ -30,8 +30,6 @@ struct thread {
   uint64 s11;
   char       stack[STACK_SIZE]; /* the thread's stack */
   int        state;             /* FREE, RUNNING, RUNNABLE */
-  void       (*handler)();
-  int started;
 };
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
@@ -59,7 +57,6 @@ thread_schedule(void)
   t = current_thread + 1;
   for(int i = 0; i < MAX_THREAD; i++){
     if(t >= all_thread + MAX_THREAD)
-      // wrap around
       t = all_thread;
     if(t->state == RUNNABLE) {
       next_thread = t;
@@ -81,14 +78,7 @@ thread_schedule(void)
      * Invoke thread_switch to switch from t to next_thread:
      * thread_switch(??, ??);
      */
-     // need to save registers + stack of t and restore registers + stack of next_thread
-     // return to the point where next_thread last left off
      thread_switch((uint64)t, (uint64)next_thread);
-     // if next_thread hasn't been started yet, call its handler
-     if (!next_thread->started) {
-         next_thread->started = 1;
-         next_thread->handler();
-     }
   } else
     next_thread = 0;
 }
@@ -103,10 +93,9 @@ thread_create(void (*func)())
   }
   t->state = RUNNABLE;
   // YOUR CODE HERE
-  t->handler = func;
-  // create stack
-  //t->stack = (uint64)malloc(STACK_SIZE);
-  t->started = 0;
+  // sp needs to be at the end of the stack because the stack grows down
+  t->sp = (uint64)t->stack + STACK_SIZE;
+  t->ra = (uint64)func;
 }
 
 void 
@@ -125,8 +114,9 @@ thread_a(void)
   int i;
   printf("thread_a started\n");
   a_started = 1;
-  while(b_started == 0 || c_started == 0)
+  while(b_started == 0 || c_started == 0) {
     thread_yield();
+  }
   
   for (i = 0; i < 100; i++) {
     printf("thread_a %d\n", i);
