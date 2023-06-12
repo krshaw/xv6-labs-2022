@@ -13,9 +13,12 @@ struct entry {
   int value;
   struct entry *next;
 };
+// linked hash table
 struct entry *table[NBUCKET];
 int keys[NKEYS];
 int nthread = 1;
+// lock per bucket
+pthread_mutex_t locks[NBUCKET];
 
 
 double
@@ -39,8 +42,9 @@ insert(int key, int value, struct entry **p, struct entry *n)
 static 
 void put(int key, int value)
 {
+  // isn't a good hash, just a modulo
   int i = key % NBUCKET;
-
+  pthread_mutex_lock(locks + i);
   // is the key already present?
   struct entry *e = 0;
   for (e = table[i]; e != 0; e = e->next) {
@@ -54,7 +58,7 @@ void put(int key, int value)
     // the new is new.
     insert(key, value, &table[i], table[i]);
   }
-
+  pthread_mutex_unlock(locks + i);
 }
 
 static struct entry*
@@ -118,6 +122,10 @@ main(int argc, char *argv[])
     keys[i] = random();
   }
 
+  for (int i = 0; i < NBUCKET; i++) {
+      pthread_mutex_init(locks + i, NULL);
+  }
+
   //
   // first the puts
   //
@@ -125,6 +133,7 @@ main(int argc, char *argv[])
   for(int i = 0; i < nthread; i++) {
     assert(pthread_create(&tha[i], NULL, put_thread, (void *) (long) i) == 0);
   }
+  // wait for all the threads to finish
   for(int i = 0; i < nthread; i++) {
     assert(pthread_join(tha[i], &value) == 0);
   }
