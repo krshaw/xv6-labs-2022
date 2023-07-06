@@ -69,14 +69,24 @@ balloc(uint dev)
   struct buf *bp;
 
   bp = 0;
+  // outer loop reads each block of bit map bits
   for(b = 0; b < sb.size; b += BPB){
     bp = bread(dev, BBLOCK(b, sb));
+    // inner loop goes through the bits of the block 
     for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
+      // bi stands for bit index
+      // the block is in memory as a list of bytes
+      // so bi % 8 is giving the "offset" into the byte we are checking
+      // and bi / 8 gives the index of the actual byte we want
+      // bi belongs to the (bi / 8)th byte
+      // and to get the bit of that byte, we can "index" into the byte via bi % 8
       m = 1 << (bi % 8);
       if((bp->data[bi/8] & m) == 0){  // Is block free?
+        // set the bi bit
         bp->data[bi/8] |= m;  // Mark block in use.
         log_write(bp);
         brelse(bp);
+        // b + bi is the block number
         bzero(dev, b + bi);
         return b + bi;
       }
@@ -94,9 +104,13 @@ bfree(int dev, uint b)
   struct buf *bp;
   int bi, m;
 
+  // get the bitmap block containing the bit for block b
   bp = bread(dev, BBLOCK(b, sb));
+  // what bit in this bit map block corresponds to block b
   bi = b % BPB;
+  // mask to get the bit of the byte containing the bit for block b
   m = 1 << (bi % 8);
+  // bi / 8 gets the byte containing the bi bit 
   if((bp->data[bi/8] & m) == 0)
     panic("freeing free block");
   bp->data[bi/8] &= ~m;
