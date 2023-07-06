@@ -102,7 +102,23 @@ e1000_transmit(struct mbuf *m)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after sending.
   //
-  
+  acquire(&e1000_lock);
+  uint32 i = regs[E1000_TDT];
+  struct tx_desc *descriptor = tx_ring + i;
+
+  if (!(descriptor->status & E1000_TXD_STAT_DD)) {
+      release(&e1000_lock);
+      return -1;
+  }
+  if (tx_mbufs[i])
+      mbuffree(tx_mbufs[i]);
+  descriptor->addr = (uint64)m->head;
+  descriptor->length = m->len;
+  descriptor->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  tx_mbufs[i] = m;
+  regs[E1000_TDT] = (i + 1) % TX_RING_SIZE;
+  __sync_synchronize();
+  release(&e1000_lock);
   return 0;
 }
 
@@ -115,14 +131,35 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+  // Software must read multiple descriptors to determine the complete length for packets that span multiple receive buffers.
+  // status field indicates whether the descriptor has been used and whether the referenced buffer is the last one
+  // when the DD (bit 0) and EOP (bit 1) bits of status are set, the received packet is complete in main memory
+  // need to loop thru the ring until DD bit is set
+  acquire(&e1000_lock);
+  while (1) {
+    uint32 tail = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+    struct rx_desc *descriptor = rx_ring + tail;
+    if (!(descriptor->status & E1000_RXD_STAT_DD))
+        break;
+    struct mbuf *m = rx_mbufs[tail];
+    mbufput(m, descriptor->length);
+    release(&e1000_lock);
+    net_rx(m);
+    acquire(&e1000_lock);
+    struct mbuf *new_mbuf = mbufalloc(0);
+    rx_mbufs[tail] = new_mbuf;
+    descriptor->addr = (uint64)new_mbuf->head;
+    descriptor->status = 0;
+    regs[E1000_RDT] = tail;
+  }
+  __sync_synchronize();
+  release(&e1000_lock);
+  return;
 }
 
 void
 e1000_intr(void)
-{
-  // tell the e1000 we've seen this interrupt;
-  // without this the e1000 won't raise any
-  // further interrupts.
+{ // tell the e1000 we've seen this interrupt; without this the e1000 won't raise any further interrupts.
   regs[E1000_ICR] = 0xffffffff;
 
   e1000_recv();
