@@ -24,6 +24,9 @@ struct file {
 struct inode {
   uint dev;           // Device number
   uint inum;          // Inode number
+  // ref count of num of C pointers pointing to this inode
+  // this is different because C pointers can come from file descriptors,
+  // cwds, and transient kernel code
   int ref;            // Reference count
   struct sleeplock lock; // protects everything below here
   int valid;          // inode has been read from disk?

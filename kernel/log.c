@@ -71,6 +71,7 @@ install_trans(int recovering)
   int tail;
 
   for (tail = 0; tail < log.lh.n; tail++) {
+    // so the home number of the ith block after log.start is stored in lh.block[i]
     struct buf *lbuf = bread(log.dev, log.start+tail+1); // read log block
     struct buf *dbuf = bread(log.dev, log.lh.block[tail]); // read dst
     memmove(dbuf->data, lbuf->data, BSIZE);  // copy block to dst
@@ -102,11 +103,14 @@ read_head(void)
 static void
 write_head(void)
 {
+  // buf for the on disk log header
   struct buf *buf = bread(log.dev, log.start);
   struct logheader *hb = (struct logheader *) (buf->data);
   int i;
+  // set n to the count of blocks
   hb->n = log.lh.n;
   for (i = 0; i < log.lh.n; i++) {
+    // the block array of the on disk log header contains the block numbers that are logged
     hb->block[i] = log.lh.block[i];
   }
   bwrite(buf);
@@ -183,6 +187,8 @@ write_log(void)
   for (tail = 0; tail < log.lh.n; tail++) {
     struct buf *to = bread(log.dev, log.start+tail+1); // log block
     struct buf *from = bread(log.dev, log.lh.block[tail]); // cache block
+    // copies over the data from the cache block to the log block
+    // log block is the actual log on disk
     memmove(to->data, from->data, BSIZE);
     bwrite(to);  // write the log
     brelse(from);
@@ -226,7 +232,11 @@ log_write(struct buf *b)
     if (log.lh.block[i] == b->blockno)   // log absorption
       break;
   }
+  // lh.block is an array of block numbers that are currently in cache, waiting to be written to disk log
   log.lh.block[i] = b->blockno;
+  // if we went through the entire for loop without breaking,
+  // that means the block currently isn't in the cache
+  // so add a new block to the log
   if (i == log.lh.n) {  // Add new block to log?
     bpin(b);
     log.lh.n++;

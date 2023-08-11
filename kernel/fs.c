@@ -62,6 +62,7 @@ bzero(int dev, int bno)
 
 // Allocate a zeroed disk block.
 // returns 0 if out of disk space.
+// returns block number
 static uint
 balloc(uint dev)
 {
@@ -217,13 +218,19 @@ ialloc(uint dev, short type)
   struct dinode *dip;
 
   for(inum = 1; inum < sb.ninodes; inum++){
+    // block containing inode inum
     bp = bread(dev, IBLOCK(inum, sb));
+    // get the disk inode from this block by indexing by inum%IPB
     dip = (struct dinode*)bp->data + inum%IPB;
+    // NOTE: don't have to ask the free bit map if this inode is free
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
+      // dip points to the data of bp, so writing bp writes
+      // the on-disk inode structure
       dip->type = type;
       log_write(bp);   // mark it allocated on the disk
       brelse(bp);
+      // return an entry from the inode table
       return iget(dev, inum);
     }
     brelse(bp);
@@ -264,6 +271,9 @@ iget(uint dev, uint inum)
 
   acquire(&itable.lock);
 
+  // could be optimized by having a flag indicating new allocation
+  // or just doing this part in the ialloc code
+  // and then breaking when we find an empty slot
   // Is the inode already in the table?
   empty = 0;
   for(ip = &itable.inode[0]; ip < &itable.inode[NINODE]; ip++){
@@ -399,8 +409,10 @@ bmap(struct inode *ip, uint bn)
   uint addr, *a;
   struct buf *bp;
 
+  // can just index into the addrs array to get the address of the nth block
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0){
+      // if the bnth block doesn't exist, ballocate it
       addr = balloc(ip->dev);
       if(addr == 0)
         return 0;
@@ -408,6 +420,7 @@ bmap(struct inode *ip, uint bn)
     }
     return addr;
   }
+  // else bn is >= NDIRECT, so subtracting NDIRECT gets us the index starting from the indirect addrs
   bn -= NDIRECT;
 
   if(bn < NINDIRECT){
@@ -418,16 +431,24 @@ bmap(struct inode *ip, uint bn)
         return 0;
       ip->addrs[NDIRECT] = addr;
     }
+    // addr is the block number of the indirect block
+    // the indirect block contains a bunch of addresses
     bp = bread(ip->dev, addr);
+    // cast the data to a pointer of uints, which are the addrs
     a = (uint*)bp->data;
+    // get the bn'th indirect address, this works because bn was subtracted by NDIRECT
+    // if there's no block, allocate it
     if((addr = a[bn]) == 0){
       addr = balloc(ip->dev);
       if(addr){
+        // update the indirect block with the address of the newly allocate block,
+        // write it to disk
         a[bn] = addr;
         log_write(bp);
       }
     }
     brelse(bp);
+    // addr is the address read from the indirect address block
     return addr;
   }
   panic("bmap: out of range");
@@ -484,20 +505,30 @@ stati(struct inode *ip, struct stat *st)
 int
 readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 {
+  // off is an offset into the file
   uint tot, m;
   struct buf *bp;
 
+  // off + n < off is checking for overflow
   if(off > ip->size || off + n < off)
     return 0;
   if(off + n > ip->size)
     n = ip->size - off;
 
   for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
+    // bmap gets the block of address offset
+    // off is an offset into the file, so get the block of that offset
     uint addr = bmap(ip, off/BSIZE);
     if(addr == 0)
       break;
+    // get the buf with the contents of the buf
     bp = bread(ip->dev, addr);
+    // bp->data is the block that contains offset, but we need to read offset
+    // either read to the end of the block or the remaining bytes of the read request
+    // take min because if the remaining bytes is less than the bytes, 
+    // we don't want to read more than requested
     m = min(n - tot, BSIZE - off%BSIZE);
+    // off % BSIZE gets the offset into the block (off / BSIZE gets the block)
     if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
       brelse(bp);
       tot = -1;
@@ -677,11 +708,13 @@ namex(char *path, int nameiparent, char *name)
       iunlockput(ip);
       return 0;
     }
+    // if returning the parent directory and at the last elem, return parent inode
     if(nameiparent && *path == '\0'){
       // Stop one level early.
       iunlock(ip);
       return ip;
     }
+    // lookup name in the current inode ip
     if((next = dirlookup(ip, name, 0)) == 0){
       iunlockput(ip);
       return 0;
