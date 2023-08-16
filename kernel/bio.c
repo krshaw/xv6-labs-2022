@@ -180,18 +180,6 @@ brelse(struct buf *b)
   const int bucket = b->blockno % NBUCKETS;
   acquire(&bcache.bucket_locks[bucket]);
   b->refcnt--;
-  //if (b->refcnt == 0) {
-  //  // no one is waiting for it.
-  //  // link up the surrounding nodes
-  //  b->next->prev = b->prev;
-  //  b->prev->next = b->next;
-  //  // move b to front of the list
-  //  b->next = bcache.head.next;
-  //  b->prev = &bcache.head;
-  //  // set b as most recently used
-  //  bcache.head.next->prev = b;
-  //  bcache.head.next = b;
-  //}
   release(&bcache.bucket_locks[bucket]);
 }
 
