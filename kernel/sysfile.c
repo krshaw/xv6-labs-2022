@@ -334,12 +334,58 @@ sys_open(void)
       return -1;
     }
   }
+  
+  // this is the point where we handle the symlink case
+  // two cases for symlinks:
+  // 1. NOFOLLOW: just return the symlink
+  // 2. !NOFOLLOW: follow the symlink, return the file it points to. symlinks can be recursive
+  if (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+      char target[MAXPATH];
+      int i = 0;
+      struct inode *tp;
+      // read in name of target
+      if (readi(ip, 0, (uint64)target, 0, MAXPATH) < 0) {
+          iunlockput(ip);
+          end_op();
+          return -1;
+      }
+      iunlockput(ip);
+      // get inode of target, which itself might be a symlink
+      if ((tp = namei(target)) == 0) {
+          end_op();
+          return -1;
+      }
+      ilock(tp);
+      // if the target inode is a symlink, get its target
+      while (tp->type == T_SYMLINK && i < 10) {
+          // get name of new target
+          if (readi(tp, 0, (uint64)target, 0, MAXPATH) < 0) {
+              iunlockput(tp);
+              end_op();
+              return -1;
+          }
+          iunlockput(tp);
+          if ((tp = namei(target)) == 0) {
+              end_op();
+              return -1;
+          }
+          ilock(tp);
+          i++;
+      } 
+      if (i == 10) {
+          iunlockput(tp);
+          end_op();
+          return -1;
+      }
+      ip = tp;
+  }
 
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();
     return -1;
   }
+
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
@@ -502,4 +548,57 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+    char target[MAXPATH], path[MAXPATH];
+    if (argstr(0, target, MAXPATH) < 0) {
+        return -1;
+    }
+    if (argstr(1, path, MAXPATH) < 0) {
+        return -1;
+    }
+    struct inode *ip, *dp;
+    char name[DIRSIZ];
+    
+    begin_op();
+
+    if((dp = nameiparent(path, name)) == 0) {
+        end_op();
+        return -1;
+    }
+
+    ilock(dp);
+
+    // create new inode for symlink, put it in directory
+    if((ip = ialloc(dp->dev, T_SYMLINK)) == 0){
+        iunlockput(dp);
+        end_op();
+        return -1;
+    }
+    ilock(ip);
+    if (dirlink(dp, name, ip->inum) < 0) {
+        iunlockput(dp);
+        iunlockput(ip);
+        end_op();
+        return -1;
+    }
+    ip->major = dp->major;
+    ip->minor = dp->minor;
+    ip->nlink = 1;
+        
+    if ((writei(ip, 0, (uint64)target, 0, MAXPATH)) != MAXPATH) {
+        iunlockput(dp);
+        iunlockput(ip);
+        end_op();
+        return -1;
+    }
+    iupdate(dp);
+    iunlockput(dp);
+    iupdate(ip);
+    iunlockput(ip);
+    end_op();
+    return 0;
 }
